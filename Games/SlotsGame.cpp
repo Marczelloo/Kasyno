@@ -61,20 +61,36 @@ int SlotsGame::askForBet(int maxBalance) {
 }
 
 int SlotsGame::renderInterface(const Player& player) {
-    ui.clear();
-    ui.print("=== SLOTS GAME ===");
+    RoundUI::clear();
+
+    std::vector<std::string> slotSymbols;
     if (slots[0] == -1) {
-        ui.renderSlots( { "?", "?", "?" } );
+        slotSymbols = { "?", "?", "?" };
     } else {
-        ui.renderSlots( {TextRes::SLOT_SYMBOLS[slots[0]], TextRes::SLOT_SYMBOLS[slots[1]], TextRes::SLOT_SYMBOLS[slots[2]]} );
+        slotSymbols = {
+            TextRes::SLOT_SYMBOLS[slots[0]],
+            TextRes::SLOT_SYMBOLS[slots[1]],
+            TextRes::SLOT_SYMBOLS[slots[2]]
+        };
     }
-    ui.print("===================");
-    ui.print(player.getName() + "'s Balance: " + std::to_string(player.getBalance()));
-    ui.print("Current bet: " + std::to_string(player.getCurrentBet()));
-    ui.print("===================");
 
-    int option = ui.askChoice("What would you like to do?", TextRes::SLOTS_GAME_OPTIONS);
+    ui.renderSlots(slotSymbols);
 
+    std::vector<std::string> info;
+    info.push_back(player.getName() + "'s Balance: " + std::to_string(player.getBalance()));
+    info.push_back("Current bet: " + std::to_string(player.getCurrentBet()));
+    if (lastScore >= 0) {
+        if (lastScore > 0) {
+            info.push_back("You won " + std::to_string(lastScore) + "!");
+        } else {
+            info.push_back("No win this time. Better luck next spin!");
+        }
+    }
+    ui.drawBox("", info);
+
+    int option = ui.askChoice("What would you like to do?",
+                              TextRes::SLOTS_GAME_OPTIONS,
+                              false);
     return option;
 }
 
@@ -123,62 +139,126 @@ GameState SlotsGame::playRound(Player &player) {
         switch (static_cast<SlotsOptions>(option)) {
             case SlotsOptions::SPIN: {
                 if (player.getBalance() < bet) {
-                    ui.print("Insufficient balance! Change bet or exit.");
+                    errorMessage = "Insufficient balance! Change bet or exit.";
                     break;
                 }
 
                 player.setCurrentBet(bet);
                 player.updateBalance(-bet);
-                slots = spinSlots();
 
-                int score = calculateScore(slots, bet);
+                std::array<int, 3> finalSlots = spinSlots();
 
-                renderInterface(player);
+                animateSpin(player, finalSlots);
 
-                ui.print("==================");
-                if (score > 0) {
-                    player.updateBalance(score);
+                lastScore = calculateScore(slots, bet);
 
-                    int netProfit = score - bet;
+                if (lastScore > 0) {
+                    player.updateBalance(lastScore);
+                    int netProfit = lastScore - bet;
                     player.setWinnings(player.getWinnings() + netProfit);
-
-                    if (slots[0] == slots[1] && slots[1] == slots[2]) {
-                        ui.print("🎉 JACKPOT! You won " + std::to_string(score) + "!");
-                    } else {
-                        ui.print("😊 You won " + std::to_string(score) + "!");
-                    }
-                } else {
-                    ui.print("😞 No win this time. Better luck next spin!");
                 }
-                ui.print("==================");
 
-                ui.print("Press Enter to continue...");
-                ui.waitForEnter();
                 break;
             }
             case SlotsOptions::CHANGE_BET: {
                 int newBet = askForBet(player.getBalance());
                 if (newBet <= 0) {
-                    ui.print("Invalid bet amount. Keeping previous bet.");
+                    errorMessage = "Invalid bet amount. Keeping previous bet.";
                 } else {
                     bet = newBet;
                     player.setCurrentBet(bet);
                 }
                 break;
             }
+            case SlotsOptions::VIEW_PAYOUTS:
+                displayPayouts();
+                break;
             case SlotsOptions::EXIT_TO_GAME_MENU:
+            case SlotsOptions::EXIT: {
+                LeaderboardEntry entry{player.getName(), player.getBalance()};
+                FileHandler::addEntry(entry);
+
                 exit = true;
-                newState = GameState::GAME_MENU;
+
+                newState = (option == static_cast<int>(SlotsOptions::EXIT_TO_GAME_MENU)) ?
+                             GameState::GAME_MENU : GameState::EXIT;
                 break;
-            case SlotsOptions::EXIT:
-                exit = true;
-                newState = GameState::EXIT;
-                break;
+            }
             default:
-                ui.print("Invalid choice, please try again.");
+                errorMessage = "Invalid choice, please try again.";
                 break;
         }
     }
 
     return newState;
+}
+
+void SlotsGame::displayPayouts() const {
+    ui.clear();
+
+    std::vector<std::string> payoutInfo;
+    payoutInfo.push_back("=== PAYOUTS TABLE ===");
+    payoutInfo.push_back("");
+    payoutInfo.push_back("THREE OF A KIND:");
+
+    for (size_t i = 0; i < TextRes::SLOT_SYMBOLS.size(); ++i) {
+        std::string symbol = TextRes::SLOT_SYMBOLS[i];
+        std::string line = symbol + " " + symbol + " " + symbol +
+                          "  ->  x" + std::to_string(tripletPayouts[i]);
+        payoutInfo.push_back(line);
+    }
+
+    payoutInfo.push_back("");
+    payoutInfo.push_back("TWO OF A KIND:");
+
+    for (size_t i = 0; i < TextRes::SLOT_SYMBOLS.size(); ++i) {
+        std::string symbol = TextRes::SLOT_SYMBOLS[i];
+        std::string line = symbol + " " + symbol + " ?  ->  x" +
+                          std::to_string(pairPayouts[i]);
+        payoutInfo.push_back(line);
+    }
+
+    ui.drawBox("", payoutInfo);
+    ui.waitForEnter("Press ENTER to return");
+}
+
+void SlotsGame::animateSpin(Player& player, const std::array<int, 3>& finalSlots) {
+    std::array<int, 3> spinCounts = {
+        random->randInt(10, 20),
+        random->randInt(15, 25),
+        random->randInt(20, 30)
+    };
+
+    int maxSpins = std::max(spinCounts[0], std::max(spinCounts[1], spinCounts[2]));
+
+    for (int spin = 0; spin < maxSpins; ++spin) {
+        std::array<int, 3> currentSlots = slots;
+
+        for (int i = 0; i < 3; ++i) {
+            if (spin < spinCounts[i]) {
+                currentSlots[i] = random->randInt(0, (int)TextRes::SLOT_SYMBOLS.size() - 1);
+            } else {
+                currentSlots[i] = finalSlots[i];
+            }
+        }
+
+        RoundUI::clear();
+        std::vector<std::string> displaySymbols = {
+            TextRes::SLOT_SYMBOLS[currentSlots[0]],
+            TextRes::SLOT_SYMBOLS[currentSlots[1]],
+            TextRes::SLOT_SYMBOLS[currentSlots[2]]
+        };
+        ui.renderSlots(displaySymbols);
+
+        std::vector<std::string> info;
+        info.push_back(player.getName() + "'s Balance: " + std::to_string(player.getBalance()));
+        info.push_back("Current bet: " + std::to_string(player.getCurrentBet()));
+        info.push_back("SPINNING...");
+        ui.drawBox("", info);
+
+        int delay = 50 + (spin * 10); // ms
+        RoundUI::pause(delay);
+    }
+
+    slots = finalSlots;
 }

@@ -85,6 +85,24 @@ GameState Casino::handleMainMenu() {
 CreatePlayerResult Casino::createPlayer() {
     const std::string name = ui.ask("Enter your name: ");
 
+    if (name.empty()) {
+        std::vector<std::string> errorInfo;
+        errorInfo.push_back("Name cannot be empty!");
+        ui.drawBox("ERROR", errorInfo);
+        ui.waitForEnter();
+        return CreatePlayerResult::Retry;
+    }
+
+    if (FileHandler::playerExists(name)) {
+        std::vector<std::string> errorInfo;
+        errorInfo.push_back("Player '" + name + "' already exists!");
+        errorInfo.push_back("");
+        errorInfo.push_back("Please choose a different name.");
+        ui.drawBox("ERROR", errorInfo);
+        ui.waitForEnter();
+        return CreatePlayerResult::Retry;
+    }
+
     const int minBalance = 500;
     const int maxBalance = 2000;
 
@@ -103,9 +121,14 @@ CreatePlayerResult Casino::createPlayer() {
         return CreatePlayerResult::Retry;
     }
 
-    ui.print("Player created successfully!");
-    ui.print("Name: " + player->getName());
-    ui.print("Balance: " + std::to_string(player->getBalance()));
+    std::vector<std::string> successInfo;
+    successInfo.push_back("Player created successfully!");
+    successInfo.push_back("");
+    successInfo.push_back("Name: " + player->getName());
+    successInfo.push_back("Balance: " + std::to_string(player->getBalance()));
+
+    ui.drawBox("SUCCESS", successInfo);
+    ui.waitForEnter();
 
     return CreatePlayerResult::Ok;
 }
@@ -114,8 +137,7 @@ void Casino::checkLeaderboard() {
     ui.clear();
     auto entries = FileHandler::loadLeaderboard("leaderboard.txt");
 
-    if (entries.empty()) ui.print("Leaderboard is empty.");
-    else ui.leaderboard(TextRes::LEADERBOARD_TITLE, entries);
+    ui.leaderboard(TextRes::LEADERBOARD_TITLE, entries);
 
     ui.waitForEnter("Press ENTER to return");
 

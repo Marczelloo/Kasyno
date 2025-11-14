@@ -60,6 +60,7 @@ enum class AfterGameOptions {
 enum class SlotsOptions {
     SPIN = 0,
     CHANGE_BET,
+    VIEW_PAYOUTS,
     EXIT_TO_GAME_MENU,
     EXIT,
 };

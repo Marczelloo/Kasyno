@@ -9,7 +9,7 @@
 
 namespace TextRes {
     constexpr const char* MAIN_MENU_TITLE = "CASINO MAIN MENU";
-    constexpr const char* LEADERBOARD_TITLE = "LEADERBOARD (TOP 100 PLAYERS)";
+    constexpr const char* LEADERBOARD_TITLE = "TOP 100 LEADERBOARD";
 
     const std::vector<std::string> MAIN_MENU_OPTIONS = {
         "Create player",
@@ -50,6 +50,7 @@ namespace TextRes {
     const std::vector<std::string> SLOTS_GAME_OPTIONS = {
         "Spin",
         "Change Bet",
+        "View payouts",
         "Exit to Game Menu",
         "Exit"
     };
@@ -61,7 +62,7 @@ namespace TextRes {
     };
 
     const std::vector<std::string> SLOT_SYMBOLS = {
-        "🍒", "🍋", "🔔", "⭐", "🍀", "7️⃣"
+        "🍒", "🍋", "💎", "🌟", "🍀", "💰"
     };
 }
 

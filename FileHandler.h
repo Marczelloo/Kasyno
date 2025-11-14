@@ -21,6 +21,7 @@ public:
     static bool saveLeaderboard(const std::vector<LeaderboardEntry>& entries, const std::string& filename = "leaderboard.txt");
     static bool addEntry(const LeaderboardEntry& entry, const std::string& filename = "leaderboard.txt");
     static std::vector<LeaderboardEntry> loadLeaderboard(const std::string& filename = "leaderboard.txt");
+    static bool playerExists(const std::string& playerName);
 };
 
 
