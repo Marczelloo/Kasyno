@@ -78,6 +78,12 @@ protected:
 
         return option;
     }
+
+    virtual void displayPayouts() const {
+        ui.clear();
+        ui.print("Payouts information is not available for this game.");
+        ui.waitForEnter("Press ENTER to return");
+    }
 public:
     Game(const std::string& gameName, Rng* rng): name(gameName), random(rng) {}
     virtual ~Game() = default;

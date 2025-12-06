@@ -13,7 +13,7 @@ private:
     std::array<int, 3> spinSlots();
     int renderInterface(const Player& player) override;
     int calculateScore(const std::array<int, 3>& slots, const int bet);
-    void displayPayouts() const;
+    void displayPayouts() const override;
     void animateSpin(Player& player, const std::array<int, 3>& finalSlots);
 
     std::array<int, 3> slots = {-1, -1, -1};

@@ -8,7 +8,7 @@
 #include <vector>
 
 #include "FileHandler.h"
-
+#include "Games/RouletteTypes.h"
 
 class RoundUI {
     static std::string trim(std::string str);
@@ -30,7 +30,10 @@ public:
     void waitForKey(const std::string& messaege = "Press any key to continue...");
     void waitForEnter(const std::string& message = "Press ENTER to continue...") const;
     std::string ask(const std::string& prompt);
+
     void renderSlots(const std::vector<std::string>& symbols);
+    void renderWheel(const std::vector<RouletteTile>& wheel, const int &spunTile);
+
     static void pause(int ms);
     static void clear();
     void leaderboard(const std::string& title, const std::vector<LeaderboardEntry>& entries);

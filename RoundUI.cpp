@@ -8,7 +8,9 @@
 #include <ostream>
 #include <algorithm>
 #include <limits>
+#include <unordered_map>
 #include <bits/this_thread_sleep.h>
+#include "Games/RouletteTypes.h"
 
 #ifdef _WIN32
     #include <windows.h>
@@ -17,6 +19,48 @@
 RoundUI::RoundUI() {}
 
 RoundUI::~RoundUI() {}
+
+static bool enableAnsiColors() {
+#ifdef _WIN32
+    HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
+    if (hOut == INVALID_HANDLE_VALUE) return false;
+    DWORD mode = 0;
+    if (!GetConsoleMode(hOut, &mode)) return false;
+    mode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING;
+    return SetConsoleMode(hOut, mode) != 0;
+#else
+    return true;
+#endif
+}
+
+static inline std::string ansi(const std::string& code) {
+    return "\x1b[" + code + "m";
+};
+
+static const std::unordered_map<std::string, std::string> ansiMap = {
+    {"reset", "0"},
+    {"bold", "1"},
+    {"black", "30"}, {"red", "31"},    {"green", "32"},
+    {"yellow","33"}, {"blue","34"},    {"magenta","35"},
+    {"cyan","36"},  {"white","37"},
+    // tła
+    {"bg_black","40"}, {"bg_red","41"}, {"bg_green","42"},
+    {"bg_yellow","43"},{"bg_blue","44"},{"bg_magenta","45"},
+    {"bg_cyan","46"},{"bg_white","47"}
+};
+
+static std::string colorize(const std::string& text, const std::string& fg= "", const std::string& bg = "", bool bold = false) {
+    std::string seq;
+    if (bold) seq += ansiMap.at("bold") + ";";
+    if (!fg.empty() &&  ansiMap.count(fg)) seq += ansiMap.at(fg) + ";";
+    if (!bg.empty() && ansiMap.count("bg_" + bg)) seq += ansiMap.at("bg_" + bg) + ";";
+    if (!seq.empty()) {
+        if (seq.back() == ';') seq.pop_back();
+        return ansi(seq) + text + ansi(ansiMap.at("reset"));
+    }
+
+    return text;
+}
 
 int RoundUI::consoleWidth() const {
 #ifdef _WIN32
@@ -328,7 +372,6 @@ void RoundUI::renderSlots(const std::vector<std::string>& symbols) {
         if (i + 1 < symbols.size()) row += "  ";
     }
 
-    // Używamy displayWidthUtf8 (policz kolumny, nie bajty)
     int rowDisplayWidth = displayWidthUtf8(row);
 
     int padTotal = innerWidth - rowDisplayWidth;
@@ -343,6 +386,40 @@ void RoundUI::renderSlots(const std::vector<std::string>& symbols) {
     ) << "\n";
 
     std::cout << centeredLine(bottom) << "\n";
+}
+
+void RoundUI::renderWheel(const std::vector<RouletteTile> &wheel, const int &spunTile) {
+    enableAnsiColors();
+    clear();
+
+    int termWidth = consoleWidth();
+    if (termWidth < 20) termWidth = 80;
+
+    int n = static_cast<int>(wheel.size());
+    std::string row;
+
+    row += "|   ";
+    for (int offset = -4; offset <= 4; ++offset) {
+        int idx = (spunTile + offset + n) % n;
+        const auto& tile = wheel[idx];
+
+        std::string num = std::to_string(tile.number);
+        std::string colored;
+
+        if (tile.color == RouletteTileType::RED) {
+            colored = colorize(" " + num + " ", "white", "red", idx == spunTile ? true : false);
+        } else if (tile.color == RouletteTileType::BLACK) {
+            colored = colorize(" " + num + " ", "white", "black", idx == spunTile ? true : false);
+        } else {
+            colored = colorize(" " + num + " ", "black", "green", idx == spunTile ? true : false);
+        }
+
+        if (!row.empty() && offset != 4) row += "|";
+        row += colored;
+    }
+    row += "   |";
+
+    std::cout << centerText(row, termWidth) << std::endl;
 }
 
 void RoundUI::pause(const int ms) {

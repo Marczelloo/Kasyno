@@ -22,6 +22,7 @@ add_executable(Kasyno
         Games/RouletteGame.h
         Games/BlackjackGame.cpp
         Games/BlackjackGame.h
+        Games/RouletteTypes.h
 )
 
 # Testy (BEZ main.cpp)

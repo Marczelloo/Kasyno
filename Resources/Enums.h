@@ -83,4 +83,12 @@ enum class SlotsIcon {
     SEVEN,
 };
 
+enum class RouletteOptions {
+    SPIN = 0,
+    CHANGE_BET,
+    VIEW_PAYOUTS,
+    EXIT_TO_GAME_MENU,
+    EXIT,
+};
+
 #endif //KASYNO_ENUMS_H

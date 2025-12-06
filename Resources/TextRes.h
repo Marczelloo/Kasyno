@@ -64,6 +64,14 @@ namespace TextRes {
     const std::vector<std::string> SLOT_SYMBOLS = {
         "🍒", "🍋", "💎", "🌟", "🍀", "💰"
     };
+
+    const std::vector<std::string> ROULETTE_GAME_OPTIONS = {
+        "Spin the wheel",
+        "Change Bet",
+        "View payouts",
+        "Exit to Game Menu",
+        "Exit"
+    };
 }
 
 #endif //KASYNO_TEXTRES_H
