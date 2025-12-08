@@ -91,4 +91,21 @@ enum class RouletteOptions {
     EXIT,
 };
 
+enum class BlackjackOptions {
+    PLAY_ROUND = 0,
+    CHANGE_BET,
+    VIEW_PAYOUTS,
+    RULES,
+    EXIT_TO_GAME_MENU,
+    EXIT,
+};
+
+enum class BlackjackRoundOptions {
+    HIT = 0,
+    STAND,
+    DOUBLE_DOWN,
+    SPLIT,
+    SURRENDER,
+};
+
 #endif //KASYNO_ENUMS_H

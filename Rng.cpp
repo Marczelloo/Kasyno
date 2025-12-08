@@ -26,5 +26,10 @@ bool Rng::randBool(double probability) {
     return dist(engine) < probability;
 }
 
+std::mt19937_64 &Rng::getEngine() {
+    return engine;
+}
+
+
 
 

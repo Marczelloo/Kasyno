@@ -17,14 +17,9 @@
 // | interfejs gry|
 // menu opcji gry (zmiana bettu, wyjscie do menu gry itp)
 
-// rzeczy ktore byly w funkcji handle game play implementowac w play round
-// bettowanie jest obslugiwane w grach wraz z mozliwoscia nadpisania (slots np dla wartosci 10, 20, 50 itp)
-// po zakonczeniu rundy gra zwraca GameState ktory kasyno interpretuje i decyduje co dalej
 // w grze mamy menu z opcjami gry, akcji gry, zmiany bettu, wybrania innej gry wyjscia itp
 // w slotsach np mozna dac opcje szybkiego bettowania 10, 20, 50 itp
 // w slotsach chce rowniez dodac zmiane ilosci lini i kolumn
-// w slotsach i ruletce sprobwac dodac animacje podczas rundy
-// w ruletce mozna dac opcje obstawiania na kolory, parzyste itp
 // w blackjacku mozna dac opcje double down, split itp
 // kazda gra ma swoj unikalny zestaw opcji ktore sa dostepne w trakcie rundy
 

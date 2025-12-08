@@ -16,6 +16,7 @@ public:
     int randInt(int min, int max);
     double randDouble(double min, double max);
     bool randBool(double probability);
+    std::mt19937_64& getEngine();
 };
 
 

@@ -85,6 +85,27 @@ namespace TextRes {
         "Low (1-18)",
         "High (19-36)"
     };
+
+    constexpr const char* BLACKJACK_BET_OPTIONS_TITLE = "SELECT YOUR BLACKJACK BET";
+
+    const std::vector<std::string> BLACKJACK_GAME_OPTIONS = {
+        "Play Round",
+        "Change Bet",
+        "View payouts",
+        "Rules",
+        "Exit to Game Menu",
+        "Exit"
+    };
+
+    constexpr const char* BLACKJACK_ROUND_OPTIONS_TITLE = "SELECT YOUR ACTION";
+
+    const std::vector<std::string> BLACKJACK_ROUND_OPTIONS = {
+        "HIT",
+        "STAND",
+        "DOUBLE DOWN",
+        "SPLIT",
+        "SURRENDER"
+    };
 }
 
 #endif //KASYNO_TEXTRES_H
