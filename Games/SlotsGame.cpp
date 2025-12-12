@@ -4,14 +4,19 @@
 
 #include "SlotsGame.h"
 
+#include <stdexcept>
+
 #include "../ExitHelper.h"
 
 SlotsGame::SlotsGame(Rng &rng): Game("Slots", rng) {};
 
 SlotsGame::~SlotsGame() = default;
 
-int SlotsGame::askForBet(int maxBalance) {
+int SlotsGame::askForBet(Player& player) {
     RoundUI::clear();
+
+    int maxBalance = player.getBalance();
+
     ui.print("Your current balance is: " + std::to_string(maxBalance));
 
     if (maxBalance < 10) {
@@ -46,14 +51,14 @@ int SlotsGame::askForBet(int maxBalance) {
             break;
         default:
             ui.print("Invalid choice! Please select a valid bet amount.");
-            return askForBet(maxBalance);
+            return askForBet(player);
     }
 
-    if (newBet > maxBalance) {
-        ui.print("Insufficient balance for this bet (" + std::to_string(newBet) + "$)!");
+    if (!player.canAffordBet(newBet)) {
+        ui.print("Insufficent balance for this bet (" + std::to_string(newBet) + "$)!");
         ui.print("Please choose a lower amount.");
         ui.waitForEnter();
-        return askForBet(maxBalance);
+        return askForBet(player);
     }
 
     return newBet;
@@ -77,7 +82,11 @@ int SlotsGame::renderInterface(const Player& player) {
 
     std::vector<std::string> info;
     info.emplace_back(player.getName() + "'s Balance: " + std::to_string(player.getBalance()));
-    info.emplace_back("Current bet: " + std::to_string(player.getCurrentBet()));
+
+    if (player.hasActiveBet()) {
+        info.emplace_back("Current bet: " + std::to_string(player.getCurrentBet()));
+    }
+
     if (lastScore >= 0) {
         if (lastScore > 0) {
             info.emplace_back("You won " + std::to_string(lastScore) + "!");
@@ -110,23 +119,25 @@ std::array<int, 3> SlotsGame::spinSlots() {
     return {getSymbol(), getSymbol(), getSymbol()};
 }
 
-int SlotsGame::calculateScore(const std::array<int, 3>& slots, const int bet) {
+double SlotsGame::calculateMultiplier(const std::array<int, 3>& slots) {
     if (slots[0] == slots[1] && slots[1] == slots[2]) {
-        return bet * tripletPayouts[slots[0]];
+        return static_cast<double>(tripletPayouts[slots[0]]);
     }
 
     if (slots[0] == slots[1] || slots[1] == slots[2] || slots[0] == slots[2]) {
         int pairSymbol = (slots[0] == slots[1]) ? slots[0] :
                          (slots[1] == slots[2]) ? slots[1] : slots[0];
-        return bet * pairPayouts[pairSymbol];
+        return static_cast<double>(pairPayouts[pairSymbol]);
     }
 
-    return 0;
+    return 0.0;
 }
 
 GameState SlotsGame::playRound(Player &player) {
     slots = {-1, -1, -1};
-    int bet = askForBet(player.getBalance());
+    lastScore = -1;
+
+    int bet = askForBet(player);
 
     if (bet <= 0) {
         ui.print("Cannot continue playing. Returning to Game Menu.");
@@ -134,8 +145,7 @@ GameState SlotsGame::playRound(Player &player) {
         return GameState::GAME_MENU;
     }
 
-    player.setCurrentBet(bet);
-
+    int selectedBet = bet;
     GameState newState = GameState::GAME_MENU;
     exit = false;
 
@@ -144,35 +154,51 @@ GameState SlotsGame::playRound(Player &player) {
 
         switch (static_cast<SlotsOptions>(option)) {
             case SlotsOptions::SPIN: {
-                if (player.getBalance() < bet) {
-                    errorMessage = "Insufficient balance! Change bet or exit.";
-                    break;
-                }
+                try {
+                    if (!player.hasActiveBet()) {
+                        player.placeBet(selectedBet);
+                    }
 
-                player.setCurrentBet(bet);
-                player.updateBalance(-bet);
+                    std::array<int, 3> finalSlots = spinSlots();
+                    animateSpin(player, finalSlots);
 
-                std::array<int, 3> finalSlots = spinSlots();
+                    double multiplier = calculateMultiplier(finalSlots);
 
-                animateSpin(player, finalSlots);
+                    if (multiplier > 0.0) {
+                        player.winBet(multiplier);
+                        lastScore = static_cast<int>(selectedBet * multiplier);
+                    } else {
+                        player.loseBet();
+                        lastScore = 0;
+                    }
 
-                lastScore = calculateScore(slots, bet);
-
-                if (lastScore > 0) {
-                    player.updateBalance(lastScore);
-                    int netProfit = lastScore - bet;
-                    player.setWinnings(player.getWinnings() + netProfit);
+                } catch (const std::invalid_argument& e) {
+                    errorMessage = "Bet error: " + std::string(e.what());
+                    lastScore = -1;
+                } catch (const std::logic_error& e) {
+                    errorMessage = "Logic error: " + std::string(e.what());
+                    lastScore = -1;
                 }
 
                 break;
             }
             case SlotsOptions::CHANGE_BET: {
-                int newBet = askForBet(player.getBalance());
+                if (player.hasActiveBet()) {
+                    try {
+                        player.cancelBet();
+                    } catch (const std::exception& e) {
+                        errorMessage = "Cancel error: " + std::string(e.what());
+                        break;
+                    }
+                }
+
+
+                int newBet = askForBet(player);
                 if (newBet <= 0) {
-                    errorMessage = "Invalid bet amount. Keeping previous bet.";
+                    errorMessage = "Bet selection cancelled!";
                 } else {
-                    bet = newBet;
-                    player.setCurrentBet(bet);
+                    selectedBet = newBet;
+                    lastScore = -1;
                 }
                 break;
             }
@@ -180,6 +206,15 @@ GameState SlotsGame::playRound(Player &player) {
                 displayPayouts();
                 break;
             case SlotsOptions::EXIT_TO_GAME_MENU: {
+                if (player.hasActiveBet()) {
+                    try {
+                        player.cancelBet();
+                    } catch (const std::exception& e) {
+                        errorMessage = "Failed to cancel bet: " + std::string(e.what());
+                        break;
+                    }
+                }
+
                 exit = true;
                 newState = GameState::GAME_MENU;
                 break;
@@ -203,10 +238,9 @@ GameState SlotsGame::playRound(Player &player) {
 }
 
 void SlotsGame::displayPayouts() const {
-    ui.clear();
+    RoundUI::clear();
 
     std::vector<std::string> payoutInfo;
-    payoutInfo.emplace_back("=== PAYOUTS TABLE ===");
     payoutInfo.emplace_back("");
     payoutInfo.emplace_back("THREE OF A KIND:");
 
@@ -227,7 +261,7 @@ void SlotsGame::displayPayouts() const {
         payoutInfo.emplace_back(line);
     }
 
-    ui.drawBox("", payoutInfo);
+    ui.drawBox("PAYOUTS TABLE", payoutInfo);
     ui.waitForEnter("Press ENTER to return");
 }
 

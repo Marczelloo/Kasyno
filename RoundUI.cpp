@@ -14,11 +14,78 @@
 
 #ifdef _WIN32
     #include <windows.h>
+#else
+    #include <sys/ioctl.h>
+    #include <unistd.h>
 #endif
 
-RoundUI::RoundUI() {}
+static const std::unordered_map<std::string, std::string> ansiMap = {
+    {"reset", "0"},
+    {"bold", "1"},
+    {"black", "30"}, {"red", "31"},    {"green", "32"},
+    {"yellow","33"}, {"blue","34"},    {"magenta","35"},
+    {"cyan","36"},  {"white","37"},
+    // tła
+    {"bg_black","40"}, {"bg_red","41"}, {"bg_green","42"},
+    {"bg_yellow","43"},{"bg_blue","44"},{"bg_magenta","45"},
+    {"bg_cyan","46"},{"bg_white","47"}
+};
 
-RoundUI::~RoundUI() {}
+static inline std::string ansi(const std::string& code) {
+    return "\x1b[" + code + "m";
+};
+
+std::string RoundUI::trim(const std::string& str) {
+    if (str.empty()) return "";
+
+    auto first = str.find_first_not_of(" \t\r\n");
+    if (first == std::string::npos) return "";
+
+    auto last = str.find_last_not_of(" \t\r\n");
+    return str.substr(first, last - first + 1);
+}
+
+bool RoundUI::isValidInteger(const std::string& str) {
+    if (str.empty()) return false;
+
+    size_t start = 0;
+    if (str[0] == '-' || str[0] == '+') {
+        if (str.size() == 1) return false;
+        start = 1;
+    }
+
+    for (size_t i = start; i < str.size(); ++i) {
+        if (!std::isdigit(static_cast<unsigned char>(str[i]))) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+bool RoundUI::safeStringToInt(const std::string& str, int& value, int min, int max) {
+    if (!isValidInteger(str)) return false;
+
+    try {
+        size_t pos = 0;
+        long long ll = std::stoll(str, &pos);
+
+        if (pos != str.size()) return false;
+
+        if (ll < std::numeric_limits<int>::min() ||
+            ll > std::numeric_limits<int>::max()) {
+            return false;
+            }
+
+        value = static_cast<int>(ll);
+        return value >= min && value <= max;
+
+    } catch (const std::out_of_range&) {
+        return false;
+    } catch (const std::invalid_argument&) {
+        return false;
+    }
+}
 
 static bool enableAnsiColors() {
 #ifdef _WIN32
@@ -33,27 +100,13 @@ static bool enableAnsiColors() {
 #endif
 }
 
-static inline std::string ansi(const std::string& code) {
-    return "\x1b[" + code + "m";
-};
-
-static const std::unordered_map<std::string, std::string> ansiMap = {
-    {"reset", "0"},
-    {"bold", "1"},
-    {"black", "30"}, {"red", "31"},    {"green", "32"},
-    {"yellow","33"}, {"blue","34"},    {"magenta","35"},
-    {"cyan","36"},  {"white","37"},
-    // tła
-    {"bg_black","40"}, {"bg_red","41"}, {"bg_green","42"},
-    {"bg_yellow","43"},{"bg_blue","44"},{"bg_magenta","45"},
-    {"bg_cyan","46"},{"bg_white","47"}
-};
-
 std::string RoundUI::colorize(const std::string& text, const std::string& fg= "", const std::string& bg = "", bool bold = false) {
     std::string seq;
+
     if (bold) seq += ansiMap.at("bold") + ";";
     if (!fg.empty() &&  ansiMap.count(fg)) seq += ansiMap.at(fg) + ";";
     if (!bg.empty() && ansiMap.count("bg_" + bg)) seq += ansiMap.at("bg_" + bg) + ";";
+
     if (!seq.empty()) {
         if (seq.back() == ';') seq.pop_back();
         return ansi(seq) + text + ansi(ansiMap.at("reset"));
@@ -64,9 +117,15 @@ std::string RoundUI::colorize(const std::string& text, const std::string& fg= ""
 
 int RoundUI::consoleWidth() const {
 #ifdef _WIN32
+    HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
+    if (hOut == INVALID_HANDLE_VALUE) {
+        return 80;
+    }
+
     CONSOLE_SCREEN_BUFFER_INFO csbi{};
-    if (GetConsoleScreenBufferInfo(GetStdHandle(STD_OUTPUT_HANDLE), &csbi)) {
-        return csbi.srWindow.Right - csbi.srWindow.Left + 1;
+    if (GetConsoleScreenBufferInfo(hOut, &csbi)) {
+        int width = csbi.srWindow.Right - csbi.srWindow.Left + 1;
+        return (width > 0) ? width : 80;
     }
     return 80;
 #else
@@ -81,11 +140,15 @@ int RoundUI::consoleWidth() const {
 void RoundUI::moveCursorToCenterRow() {
 #ifdef _WIN32
     HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
+    if (hOut == INVALID_HANDLE_VALUE) return;
+
     CONSOLE_SCREEN_BUFFER_INFO csbi{};
     if (!GetConsoleScreenBufferInfo(hOut, &csbi)) return;
 
     int termWidth = csbi.srWindow.Right - csbi.srWindow.Left + 1;
-    SHORT targetCol = (SHORT)(termWidth / 2);
+    if (termWidth <= 0) return;
+
+    SHORT targetCol = static_cast<SHORT>(termWidth / 2);
 
     COORD pos = csbi.dwCursorPosition;
     pos.X = targetCol;
@@ -94,6 +157,8 @@ void RoundUI::moveCursorToCenterRow() {
 }
 
 std::string RoundUI::centerText(const std::string& text, int width) const {
+    if (width <= 0) return text;
+
     int displayLen = displayWidthUtf8(text);
     if (displayLen >= width) return text;
 
@@ -103,9 +168,12 @@ std::string RoundUI::centerText(const std::string& text, int width) const {
 
     return std::string(left, ' ') + text + std::string(right, ' ');
 }
+
 void RoundUI::drawBox(const std::string& title,
                       const std::vector<std::string>& lines,
                       int padding) const {
+    if (padding < 0) padding = 0;
+
     int width = consoleWidth();
     if (width < 20) width = 80;
 
@@ -113,7 +181,7 @@ void RoundUI::drawBox(const std::string& title,
     if (maxContentWidth < 20) maxContentWidth = 20;
 
     auto truncate = [this, maxContentWidth](const std::string& s) {
-        if ((int)s.size() <= maxContentWidth) return s;
+        if (static_cast<int>(s.size()) <= maxContentWidth) return s;
         if (maxContentWidth <= 3) return s.substr(0, maxContentWidth);
         return s.substr(0, maxContentWidth - 3) + "...";
     };
@@ -169,18 +237,11 @@ void RoundUI::drawBox(const std::string& title,
     std::cout << centeredLine(bottom) << "\n";
 }
 
-std::string RoundUI::trim(std::string str) {
-    auto first = str.find_first_not_of(" \t\r\n");
-    if (first == std::string::npos) return "";
-    auto last = str.find_last_not_of(" \t\r\n");
-    return str.substr(first, last - first + 1);
-}
-
 void RoundUI::print(const std::string &text) const {
     std::cout << centerText(text, consoleWidth()) << std::endl;
 }
 
-int RoundUI::askChoice(const std::string &prompt, const std::vector<std::string> &options, bool clearScreen) {
+int RoundUI::askChoice(const std::string &prompt, const std::vector<std::string>& options, bool clearScreen) const{
     if (prompt.empty()) {
         std::cout << "Your prompt for choice windows is empty " << std::endl;
         return -1;
@@ -206,7 +267,8 @@ int RoundUI::askChoice(const std::string &prompt, const std::vector<std::string>
         std::string answer;
         int choice;
 
-        RoundUI::moveCursorToCenterRow();
+        moveCursorToCenterRow();
+        std::cout << "> ";
         if (!std::getline(std::cin, answer)) {
             std::cout << "\nInput closed\n";
             return -1;
@@ -215,22 +277,17 @@ int RoundUI::askChoice(const std::string &prompt, const std::vector<std::string>
         answer = trim(answer);
         if (answer.empty()) continue;
 
-        try {
-            choice = std::stoi(answer);
-        } catch (...) {
-            std::cout << "Invalid option\n";
+        if (!safeStringToInt(answer, choice, 1, static_cast<int>(options.size()))) {
+            std::cout << centerText("Invalid choice", consoleWidth()) << std::endl;
+            pause(1000);
             continue;
         }
 
-        if (choice < 1 || choice > (int)options.size()) {
-            std::cout << "Invalid choice\n";
-            continue;
-        }
         return choice - 1;
     }
 }
 
-std::string RoundUI::ask(const std::string &prompt) {
+std::string RoundUI::ask(const std::string &prompt) const{
     if (prompt.empty()) {
         std::cerr << "Error: Your prompt for ask is empty" << std::endl;
         return "";
@@ -250,7 +307,8 @@ std::string RoundUI::ask(const std::string &prompt) {
         std::vector<std::string> lines;
         drawBox(trimmed_prompt, lines);
 
-        RoundUI::moveCursorToCenterRow();
+        moveCursorToCenterRow();
+        std::cout << "> ";
         if (!std::getline(std::cin, answer)) {
             std::cout << "\nInput closed\n";
             return "";
@@ -325,6 +383,11 @@ int RoundUI::displayWidthUtf8(const std::string& s) const {
 
 
 void RoundUI::renderSlots(const std::vector<std::string>& symbols) {
+    if (symbols.empty()) {
+        std::cerr << "Error: Symbols vector is empty\n";
+        return;
+    }
+
     clear();
 
     int termWidth = consoleWidth();
@@ -344,7 +407,7 @@ void RoundUI::renderSlots(const std::vector<std::string>& symbols) {
     std::cout << centeredLine(top) << "\n";
 
     const std::string title = "=== SLOTS GAME ===";
-    int titleLen = (int)title.size();
+    int titleLen = static_cast<int>(title.size());
 
     int padLeftTitle  = (innerWidth - titleLen) / 2;
     int padRightTitle = innerWidth - titleLen - padLeftTitle;
@@ -381,6 +444,16 @@ void RoundUI::renderSlots(const std::vector<std::string>& symbols) {
 }
 
 void RoundUI::renderWheel(const std::vector<RouletteTile>& wheel, const int& spunTile) {
+    if (wheel.empty()) {
+        std::cerr << "Error: Wheel vector is empty\n";
+        return;
+    }
+
+    if (spunTile < 0 || spunTile >= static_cast<int>(wheel.size())) {
+        std::cerr << "Error: Invalid spunTile index\n";
+        return;
+    }
+
     enableAnsiColors();
     clear();
 
@@ -388,9 +461,7 @@ void RoundUI::renderWheel(const std::vector<RouletteTile>& wheel, const int& spu
     if (termWidth < 40) termWidth = 80;
 
     int n = static_cast<int>(wheel.size());
-    if (n == 0 || spunTile < 0) return;
 
-    // ===== build colored row with 4 tiles before and after center =====
     std::string row;
 
     for (int offset = -4; offset <= 4; ++offset) {
@@ -419,8 +490,6 @@ void RoundUI::renderWheel(const std::vector<RouletteTile>& wheel, const int& spu
     }
 
     std::string pointer = "▼";
-
-    // ===== szerokości liczone BEZ ANSI =====
     std::string rowPlain = stripAnsi(row);
 
     int innerWidth = std::max(
@@ -445,7 +514,6 @@ void RoundUI::renderWheel(const std::vector<RouletteTile>& wheel, const int& spu
         "| " + std::string(ptrLeft, ' ') + pointer +
         std::string(ptrRight, ' ') + " |";
 
-    // row line
     int rowW = displayWidthUtf8(rowPlain);
     int rowSpaces = std::max(0, innerWidth - rowW);
     int rowLeft  = rowSpaces / 2;
@@ -465,7 +533,6 @@ void RoundUI::renderWheel(const std::vector<RouletteTile>& wheel, const int& spu
         "| " + std::string(titleLeft, ' ') + title +
         std::string(titleRight, ' ') + " |";
 
-    // ===== render =====
     std::cout << indent << top        << "\n";
     std::cout << indent << titleLine  << "\n";
     std::cout << indent << top        << "\n";
@@ -473,8 +540,11 @@ void RoundUI::renderWheel(const std::vector<RouletteTile>& wheel, const int& spu
     std::cout << indent << rowLine    << "\n";
     std::cout << indent << bottom     << "\n";
 }
+
 std::string RoundUI::centerColored(const std::string& s, int termWidth) const {
-    int realWidth = displayWidthUtf8(s); // ignoring ANSI sequences
+    if (termWidth <= 0) return s;
+
+    int realWidth = displayWidthUtf8(stripAnsi(s));
     if (realWidth >= termWidth) return s;
 
     int padding = (termWidth - realWidth) / 2;
@@ -505,6 +575,7 @@ std::string RoundUI::stripAnsi(const std::string& s) const {
 
 
 void RoundUI::pause(const int ms) {
+    if (ms <= 0) return;
     std::this_thread::sleep_for(std::chrono::milliseconds(ms));
 }
 
@@ -520,9 +591,9 @@ void RoundUI::leaderboard(const std::string& title, const std::vector<Leaderboar
     std::vector<std::string> lines;
 
     if (entries.empty()) {
-        lines.push_back("");
-        lines.push_back("No players yet!");
-        lines.push_back("");
+        lines.emplace_back("");
+        lines.emplace_back("No players yet!");
+        lines.emplace_back("");
     } else {
         for (size_t i = 0; i < entries.size(); ++i) {
             std::string rank = std::to_string(i + 1) + ".";
@@ -537,7 +608,7 @@ void RoundUI::leaderboard(const std::string& title, const std::vector<Leaderboar
     drawBox(title, lines);
 }
 
-void RoundUI::waitForKey(const std::string& message) {
+void RoundUI::waitForKey(const std::string& message) const {
     print(message);
     std::cin.get();
 }
@@ -548,7 +619,17 @@ void RoundUI::waitForEnter(const std::string& message) const {
 }
 
 std::string RoundUI::askInput(const std::string &prompt,
-                              const std::vector<std::string> &validInputs) {
+                              const std::vector<std::string> &validInputs) const {
+    if (prompt.empty()) {
+        std::cerr << "Error: Prompt is empty\n";
+        return "";
+    }
+
+    if (validInputs.empty()) {
+        std::cerr << "Error: Valid inputs vector is empty\n";
+        return "";
+    }
+
     std::string answer;
 
     while (true) {
@@ -556,8 +637,9 @@ std::string RoundUI::askInput(const std::string &prompt,
         std::vector<std::string> lines = { prompt };
         drawBox("", lines);
 
-        RoundUI::moveCursorToCenterRow();
-        std::cout << "> ";        if (!std::getline(std::cin, answer)) {
+        moveCursorToCenterRow();
+        std::cout << "> ";
+        if (!std::getline(std::cin, answer)) {
             std::cout << "\nInput closed\n";
             return "";
         }
@@ -565,15 +647,26 @@ std::string RoundUI::askInput(const std::string &prompt,
         answer = trim(answer);
         if (std::find(validInputs.begin(), validInputs.end(), answer) != validInputs.end()) {
             return answer;
-        } else {
-            std::cout << centerText("Invalid input.", consoleWidth()) << std::endl;
-            pause(1000);
         }
+
+        std::cout << centerText("Invalid input.", consoleWidth()) << std::endl;
+        pause(1000);
     }
 }
 
-int RoundUI::askInput(const std::string &prompt, int min, int max) {
+int RoundUI::askInput(const std::string &prompt, int min, int max) const {
+    if (prompt.empty()) {
+        std::cerr << "Error: Prompt is empty\n";
+        return -1;
+    }
+
+    if (min > max) {
+        std::cerr << "Error: min > max\n";
+        return -1;
+    }
+
     std::string answer;
+    int value;
 
     while (true) {
         clear();
@@ -583,28 +676,23 @@ int RoundUI::askInput(const std::string &prompt, int min, int max) {
         };
         drawBox("", lines);
 
-        RoundUI::moveCursorToCenterRow();
-        std::cout << "> ";        if (!std::getline(std::cin, answer)) {
+        moveCursorToCenterRow();
+        std::cout << "> ";
+        if (!std::getline(std::cin, answer)) {
             std::cout << "\nInput closed\n";
             return -1;
         }
 
         answer = trim(answer);
-        try {
-            int value = std::stoi(answer);
-            if (value >= min && value <= max) {
-                return value;
-            } else {
-                std::cout << centerText(
-                    "Input must be between " + std::to_string(min) +
-                    " and " + std::to_string(max),
-                    consoleWidth()) << std::endl;
-                pause(1000);
-            }
-        } catch (...) {
-            std::cout << centerText("Invalid number.", consoleWidth()) << std::endl;
-            pause(1000);
+        if (safeStringToInt(answer, value, min, max)) {
+            return value;
         }
+
+        std::cout << centerText(
+            "Input must be between " + std::to_string(min) +
+            " and " + std::to_string(max),
+            consoleWidth()) << std::endl;
+        pause(1000);
     }
 }
 

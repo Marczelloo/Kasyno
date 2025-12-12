@@ -54,7 +54,6 @@ std::vector<LeaderboardEntry> FileHandler::loadLeaderboard(const std::string& fi
     }
 
     std::ifstream file(filename);
-
     if (!file.is_open()) return entries;
 
     std::string line;
@@ -64,8 +63,12 @@ std::vector<LeaderboardEntry> FileHandler::loadLeaderboard(const std::string& fi
             try {
                 LeaderboardEntry entry;
                 entry.name = line.substr(0, pos);
-                entry.balance = std::stoi(line.substr(pos + 2));
-                entries.push_back(entry);
+
+                int balance = std::stoi(line.substr(pos + 2));
+                if (balance >= 0) {
+                    entry.balance = balance;
+                    entries.push_back(entry);
+                }
             } catch(...) {
                 continue;
             }
@@ -74,9 +77,10 @@ std::vector<LeaderboardEntry> FileHandler::loadLeaderboard(const std::string& fi
 
     file.close();
 
-    std::sort(entries.begin(), entries.end(), [](const LeaderboardEntry& a, const LeaderboardEntry& b) {
-        return b.balance < a.balance;
-    });
+    std::sort(entries.begin(), entries.end(),
+        [](const LeaderboardEntry& a, const LeaderboardEntry& b) {
+            return a.balance > b.balance;  // Największy na górze
+        });
 
     return entries;
 }

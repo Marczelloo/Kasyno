@@ -10,6 +10,7 @@
 
 #include "../ExitHelper.h"
 
+/// @brief Payout multipliers for each bet type
 constexpr std::array<int, 8> ROULETTE_PAYOUT_MULTIPLIERS = {
     2,  // RED
     2,  // BLACK
@@ -26,7 +27,6 @@ RouletteGame::RouletteGame(Rng &rng): Game("Roulette", rng),
     betType(RouletteBetType::BET_RED),
     betNumber(-1),
     wheel(initWheel()),
-    prevTiles(),
     spunTile(-1) {};
 
 RouletteGame::~RouletteGame() = default;
@@ -39,11 +39,9 @@ RouletteTileType RouletteGame::getColorForNumber(int number) const {
         19, 21, 23, 25, 27, 30, 32, 34, 36
     };
 
-    if (std::find(redNumbers.begin(), redNumbers.end(), number) != redNumbers.end()) {
-        return RouletteTileType::RED;
-    } else {
-        return RouletteTileType::BLACK;
-    }
+    return (std::find(redNumbers.begin(), redNumbers.end(), number) != redNumbers.end())
+               ? RouletteTileType::RED
+               : RouletteTileType::BLACK;
 }
 
 std::vector<RouletteTile> RouletteGame::initWheel() {
@@ -69,8 +67,7 @@ std::vector<RouletteTile> RouletteGame::initWheel() {
 }
 
 int RouletteGame::spinWheel() {
-    int n = static_cast<int>(wheel.size());
-    return random.randInt(0, n - 1);
+    return random.randInt(0, static_cast<int>(wheel.size()) - 1);
 }
 
 void RouletteGame::animateSpin(const Player& player, int resultIndex) {
@@ -97,8 +94,11 @@ void RouletteGame::animateSpin(const Player& player, int resultIndex) {
         ui.renderWheel(wheel, currentIndex);
         std::vector<std::string> info;
         info.emplace_back(player.getName() + "'s Balance: " + std::to_string(player.getBalance()));
-        info.emplace_back("Current bet: " + std::to_string(player.getCurrentBet()) + " - " +
-                       TextRes::ROULETTE_BET_TYPES[static_cast<int>(betType)]);
+        info.emplace_back("Current bet: " + std::to_string(player.getCurrentBet()) +
+                         "$ - " + TextRes::ROULETTE_BET_TYPES[static_cast<int>(betType)] +
+                         (betType == RouletteBetType::BET_NUMBER
+                              ? " (" + std::to_string(betNumber) + ")"
+                              : ""));
         info.emplace_back("");
         info.emplace_back("Spinning the wheel...");
         ui.drawBox("", info);
@@ -115,8 +115,11 @@ void RouletteGame::animateSpin(const Player& player, int resultIndex) {
     spunTile = resultIndex;
 }
 
-int RouletteGame::askForBet(const int maxBalance) {
+int RouletteGame::askForBet(Player& player) {
     RoundUI::clear();
+
+    int maxBalance = player.getBalance();
+
     ui.print("Your current balance is: " + std::to_string(maxBalance));
 
     if (maxBalance < 1) {
@@ -128,52 +131,20 @@ int RouletteGame::askForBet(const int maxBalance) {
 
     int choice = ui.askChoice(TextRes::ROULETTE_BET_OPTIONS_TITLE, TextRes::ROULETTE_BET_TYPES);
 
-    RouletteBetType newBetType;
+    RouletteBetType newBetType = static_cast<RouletteBetType>(choice);
 
-    switch (static_cast<RouletteBetType>(choice)) {
-        case RouletteBetType::BET_RED:
-            newBetType = RouletteBetType::BET_RED;
-            break;
-        case RouletteBetType::BET_BLACK:
-            newBetType = RouletteBetType::BET_BLACK;
-            break;
-        case RouletteBetType::BET_GREEN:
-            newBetType = RouletteBetType::BET_GREEN;
-            break;
-        case RouletteBetType::BET_NUMBER: {
-                newBetType = RouletteBetType::BET_NUMBER;
-                std::string prompt = "Enter the number you want to bet on (0-36): ";
-                int input = ui.askInput(prompt, 0, 36);
-                if (input < 0 || input > 36) {
-                    ui.print("Invalid number!");
-                    return askForBet(maxBalance);
-                } else {
-                    betNumber = input;
-                }
-            }
-            break;
-        case RouletteBetType::BET_ODD:
-            newBetType = RouletteBetType::BET_ODD;
-            break;
-        case RouletteBetType::BET_EVEN:
-            newBetType = RouletteBetType::BET_EVEN;
-            break;
-        case RouletteBetType::BET_LOW:
-            newBetType = RouletteBetType::BET_LOW;
-            break;
-        case RouletteBetType::BET_HIGH:
-            newBetType = RouletteBetType::BET_HIGH;
-            break;
-        default:
-            ui.print("Invalid choice! Please select a valid bet type.");
-            return askForBet(maxBalance);
+    if (newBetType == RouletteBetType::BET_NUMBER) {
+        int input = ui.askInput("Enter the number you want to bet on (0-36): ",
+                                0, 36);
+        betNumber = input;
     }
 
-    choice = ui.askChoice(TextRes::BET_SELECT_TITLE, TextRes::BET_SELECT_OPTIONS);
+    choice = ui.askChoice(TextRes::BET_SELECT_TITLE,
+                          TextRes::BET_SELECT_OPTIONS);
 
     int newBetAmount = 0;
 
-    switch  (static_cast<BetOptions>(choice)) {
+    switch (static_cast<BetOptions>(choice)) {
         case BetOptions::BET_ALL_IN:
             newBetAmount = maxBalance;
             break;
@@ -184,76 +155,72 @@ int RouletteGame::askForBet(const int maxBalance) {
             newBetAmount = maxBalance / 4;
             break;
         case BetOptions::BET_CUSTOM: {
-            ui.print("Custom bet amount selected.");
-            std::string prompt = "Enter your bet amount (1 - " + std::to_string(maxBalance) + "): ";
-            int input = ui.askInput(prompt, 1, maxBalance);
-            if (input < 1 || input > maxBalance) {
-                ui.print("Invalid bet amount!");
-                return askForBet(maxBalance);
-            } else {
-                newBetAmount = input;
-            }
+            newBetAmount = ui.askInput(
+                "Enter your bet amount (1 - " + std::to_string(maxBalance) + "): ",
+                1,
+                maxBalance
+            );
             break;
         }
         default:
-            ui.print("Invalid choice! Please select a valid bet type.");
-            return askForBet(maxBalance);
+            ui.print("Invalid choice! Please select a valid bet amount.");
+            return askForBet(player);
+    }
+
+    if (newBetAmount <= 0 || !player.canAffordBet(newBetAmount)) {
+        ui.print("Insufficient balance for this bet (" + std::to_string(newBetAmount) + "$)!");
+        ui.waitForEnter();
+        return askForBet(player);
     }
 
     betType = newBetType;
-
     return newBetAmount;
 }
 
-int RouletteGame::calculateScore(int selectedTile, int bet) {
-    const RouletteTile& tile = wheel[selectedTile];
+double RouletteGame::calculateMultiplier(int selectedTile) {
+    if (selectedTile < 0 || selectedTile >= static_cast<int>(wheel.size())) {
+        return 0.0;
+    }
 
+    const RouletteTile& tile = wheel[selectedTile];
     bool win = false;
 
     switch (betType) {
         case RouletteBetType::BET_RED:
             win = (tile.color == RouletteTileType::RED);
-            if (!win) ui.print("No win for BET_RED");
             break;
         case RouletteBetType::BET_BLACK:
             win = (tile.color == RouletteTileType::BLACK);
-            if (!win) ui.print("No win for BET_BLACK");
             break;
         case RouletteBetType::BET_GREEN:
             win = (tile.color == RouletteTileType::GREEN);
-            if (!win) ui.print("No win for BET_GREEN");
             break;
         case RouletteBetType::BET_NUMBER:
             win = (tile.number == betNumber);
-            if (!win) ui.print("No win for BET_NUMBER");
             break;
         case RouletteBetType::BET_ODD:
             win = (tile.number != 0 && tile.number % 2 == 1);
-            if (!win) ui.print("No win for BET_ODD");
             break;
         case RouletteBetType::BET_EVEN:
             win = (tile.number != 0 && tile.number % 2 == 0);
-            if (!win) ui.print("No win for BET_EVEN");
             break;
         case RouletteBetType::BET_LOW:
             win = (tile.number >= 1 && tile.number <= 18);
-            if (!win) ui.print("No win for BET_LOW");
             break;
         case RouletteBetType::BET_HIGH:
             win = (tile.number >= 19 && tile.number <= 36);
-            if (!win) ui.print("No win for BET_HIGH");
             break;
         default:
-            ui.print("Invalid bet type for score calculation!");
-            return 0;
+            return 0.0;
     }
 
     if (!win) {
-        return 0;
+        return 0.0;
     }
 
-    int multiplier = ROULETTE_PAYOUT_MULTIPLIERS[static_cast<int>(betType)];
-    return bet * multiplier;
+    return static_cast<double>(
+        ROULETTE_PAYOUT_MULTIPLIERS[static_cast<int>(betType)]
+    );
 }
 
 void RouletteGame::displayPayouts() const {
@@ -270,7 +237,7 @@ void RouletteGame::displayPayouts() const {
         payoutInfo.emplace_back(std::move(line));
     }
 
-    ui.drawBox("=== PAYOUTS TABLE ===", payoutInfo);
+    ui.drawBox("PAYOUTS TABLE", payoutInfo);
     ui.waitForEnter("Press ENTER to return");
 }
 
@@ -281,10 +248,13 @@ int RouletteGame::renderInterface(const Player &player) {
 
     std::vector<std::string> info;
     info.emplace_back(player.getName() + "'s Balance: " + std::to_string(player.getBalance()));
-    info.emplace_back("Current bet: " + std::to_string(player.getCurrentBet()) + " - " +
-                   TextRes::ROULETTE_BET_TYPES[static_cast<int>(betType)] +
-                   (betType == RouletteBetType::BET_NUMBER ?
-                       (" [" + std::to_string(betNumber) + "]") : ""));
+    if (player.hasActiveBet()) {
+        info.emplace_back("Current bet: " + std::to_string(player.getCurrentBet()) +
+                         "$ - " + TextRes::ROULETTE_BET_TYPES[static_cast<int>(betType)] +
+                         (betType == RouletteBetType::BET_NUMBER
+                              ? " (" + std::to_string(betNumber) + ")"
+                              : ""));
+    }
 
     if (lastScore >= 0) {
         if (lastScore > 0) {
@@ -310,8 +280,10 @@ int RouletteGame::renderInterface(const Player &player) {
 }
 
 GameState RouletteGame::playRound(Player &player) {
+    spunTile = -1;
+    lastScore = -1;
 
-    int bet = askForBet(player.getBalance());
+    int bet = askForBet(player);
 
     if (bet <= 0) {
         ui.print("Cannot continue playing. Returning to Game Menu.");
@@ -319,8 +291,7 @@ GameState RouletteGame::playRound(Player &player) {
         return GameState::GAME_MENU;
     }
 
-    player.setCurrentBet(bet);
-
+    int selectedBet = bet;
     GameState newState = GameState::GAME_MENU;
     exit = false;
 
@@ -329,36 +300,56 @@ GameState RouletteGame::playRound(Player &player) {
 
         switch (static_cast<RouletteOptions>(option)) {
             case RouletteOptions::SPIN: {
+                try {
+                    if (!player.hasActiveBet()) {
+                        player.placeBet(selectedBet);
+                    }
+
+                    int resultIndex = spinWheel();
+                    animateSpin(player, resultIndex);
+
+                    double multiplier = calculateMultiplier(resultIndex);
+
+                    if (multiplier > 0.0) {
+                        player.winBet(multiplier);
+                        lastScore = static_cast<int>(selectedBet);
+                    } else {
+                        player.loseBet();
+                        lastScore = 0;
+                    }
+                } catch (const std::invalid_argument& e) {
+                    errorMessage = "Bet error: " + std::string(e.what());
+                    lastScore = -1;
+                } catch (const std::logic_error& e) {
+                    errorMessage = "Logic error: " + std::string(e.what());
+                    lastScore = -1;
+                }
+
+
                 if (player.getBalance() < bet) {
                     errorMessage = "Insufficient balance to place the bet.";
                     break;
                 }
 
-                player.setCurrentBet(bet);
-                player.updateBalance(-bet);
-
-                int resultIndex = spinWheel();
-                animateSpin(player, resultIndex);
-                spunTile = resultIndex;
-
-                lastScore = calculateScore(spunTile, bet);
-
-                if (lastScore > 0) {
-                    player.updateBalance(lastScore);
-                    int netProfit = lastScore - bet;
-                    player.setWinnings(player.getWinnings() + netProfit);
-                }
-
                 break;
             }
             case RouletteOptions::CHANGE_BET: {
-                int newBet = askForBet(player.getBalance());
+                if (player.hasActiveBet()) {
+                    try {
+                        player.cancelBet();
+                    } catch (const std::exception& e) {
+                        errorMessage = "Cancel error: " + std::string(e.what());
+                        break;
+                    }
+                }
+
+                int newBet = askForBet(player);
 
                 if (newBet <= 0) {
-                    errorMessage = "Invalid bet amount. Keeping previous bet.";
+                    errorMessage = "Bet selection cancelled!";
                 } else {
-                    bet = newBet;
-                    player.setCurrentBet(bet);
+                    selectedBet = newBet;
+                    lastScore = -1;
                 }
                 break;
             }
@@ -367,6 +358,15 @@ GameState RouletteGame::playRound(Player &player) {
                 break;
             }
             case RouletteOptions::EXIT_TO_GAME_MENU: {
+                if (player.hasActiveBet()) {
+                    try {
+                        player.cancelBet();
+                    } catch (const std::exception& e) {
+                        errorMessage = "Failed to cancel bet: " + std::string(e.what());
+                        break;
+                    }
+                }
+
                 exit = true;
                 newState = GameState::GAME_MENU;
                 break;

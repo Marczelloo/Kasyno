@@ -3,31 +3,36 @@
 //
 
 #include "BlackjackGame.h"
-
-#include <algorithm>
-
 #include "../ExitHelper.h"
 
 BlackjackGame::BlackjackGame(Rng &rng): Game("Blackjack", rng),
     lastScore(-1),
-    deck(initializeDeck())
-        {};
+    deck(initializeDeck()) {};
 
 BlackjackGame::~BlackjackGame() = default;
 
 std::vector<std::vector<Card>> BlackjackGame::initializeDeck() {
     std::vector<std::vector<Card>> newDeck;
 
-    for (int i = 0; i < 4; i++) {
+    for (int suitIdx = 0; suitIdx < 4; suitIdx++) {
         std::vector<Card> suitCards;
-        for (int j = 0; j < 13; j++) {
+        for (int rankIdx = 0; rankIdx < 13; rankIdx++) {
             Card card;
-            switch (j) {
-                case 0: card.rank = "A"; card.value = 11; break;
-                case 10: case 11: case 12: card.rank = (j == 10 ? "J" : (j == 11 ? "Q" : "K")); card.value = 10; break;
-                default: card.rank = std::to_string(j + 1); card.value = j + 1; break;
+            card.suit = static_cast<Suit>(suitIdx);
+
+            switch (rankIdx) {
+                case 0:
+                    card.rank = "A";
+                    card.value = 11;
+                    break;
+                case 10: case 11: case 12:
+                    card.rank = (rankIdx == 10 ? "J" : (rankIdx == 11 ? "Q" : "K"));
+                    card.value = 10;
+                    break;
+                default:
+                    card.rank = std::to_string(rankIdx + 1);
+                    card.value = rankIdx + 1; break;
             }
-            card.suit = static_cast<Suit>(i);
             suitCards.push_back(card);
         }
         newDeck.push_back(suitCards);
@@ -42,13 +47,19 @@ std::vector<std::vector<Card>> BlackjackGame::shuffleDeck() {
         flatDeck.insert(flatDeck.end(), suitCards.begin(), suitCards.end());
     }
 
-    std::shuffle(flatDeck.begin(), flatDeck.end(), random.getEngine());
+    for (size_t i = flatDeck.size() - 1; i > 0; --i) {
+        size_t j = static_cast<size_t>(random.randInt(0, static_cast<int>(i)));
+        std::swap(flatDeck[i], flatDeck[j]);
+    }
 
     std::vector<std::vector<Card>> shuffledDeck;
     size_t cardsPerSuit = 13;
+
     for (size_t i = 0; i < flatDeck.size(); i += cardsPerSuit) {
-        std::vector<Card> suitCards(flatDeck.begin() + i,
-                                     flatDeck.begin() + std::min(i + cardsPerSuit, flatDeck.size()));
+        std::vector<Card> suitCards(
+            flatDeck.begin() + i,
+            flatDeck.begin() + std::min(i + cardsPerSuit,
+            flatDeck.size()));
         shuffledDeck.push_back(suitCards);
     }
 
@@ -68,8 +79,11 @@ Card BlackjackGame::drawCard() {
     return drawCard();
 }
 
-int BlackjackGame::askForBet(const int maxBalance) {
+int BlackjackGame::askForBet(Player& player) {
     RoundUI::clear();
+
+    int maxBalance = player.getBalance();
+
     ui.print("Your current balance is: " + std::to_string(maxBalance));
 
     if (maxBalance < 1) {
@@ -104,23 +118,23 @@ int BlackjackGame::askForBet(const int maxBalance) {
             newBet = (bet > 0 && bet <= maxBalance) ? bet : maxBalance;
     }
 
-    return newBet;
-}
+    if (newBet <= 0 || !player.canAffordBet(newBet)) {
+        ui.print("Insufficient balance for this bet (" + std::to_string(newBet) + "$)!");
+        ui.waitForEnter();
+        return askForBet(player);
+    }
 
-int BlackjackGame::calculateScore(std::vector<Card> playersHand, int bet) {
-    ui.print("Placeholder for calculate score");
-    return 0;
+    return newBet;
 }
 
 void BlackjackGame::displayPayouts() const {
     RoundUI::clear();
 
     std::vector<std::string> payoutInfo;
-    payoutInfo.emplace_back("=== PAYOUTS TABLE ===");
     payoutInfo.emplace_back("Blackjack (Ace + 10-value card): 3:2 payout");
     payoutInfo.emplace_back("Win: 1:1 payout");
     payoutInfo.emplace_back("Push: Bet returned");
-    ui.drawBox("", payoutInfo);
+    ui.drawBox("PAYOUTS TABLE", payoutInfo);
     ui.waitForEnter("Press ENTER to return");
 }
 
@@ -128,7 +142,6 @@ void BlackjackGame::displayRules() const {
     RoundUI::clear();
 
     std::vector<std::string> rulesInfo;
-    rulesInfo.emplace_back("=== BLACKJACK RULES ===");
     rulesInfo.emplace_back("1. Goal:");
     rulesInfo.emplace_back("   Get as close to 21 as possible without exceeding it.");
     rulesInfo.emplace_back("");
@@ -178,12 +191,17 @@ int BlackjackGame::renderInterface(const Player &player) {
 
     std::vector<std::string> info;
     info.emplace_back(player.getName() + "'s Balance: " + std::to_string(player.getBalance()));
-    info.emplace_back("Current bet: " + std::to_string(player.getCurrentBet()));
+
+    if (player.hasActiveBet()) {
+        info.emplace_back("Current bet: " + std::to_string(player.getCurrentBet()) + "$");
+    }
 
     if (lastScore >= 0) {
         if (lastScore > 0) {
+            info.emplace_back("");
             info.emplace_back("You won " + std::to_string(lastScore) + "!");
         } else {
+            info.emplace_back("");
             info.emplace_back("No win this time. Better luck next round!");
         }
     }
@@ -194,7 +212,7 @@ int BlackjackGame::renderInterface(const Player &player) {
         errorMessage.clear();
     }
 
-    ui.drawBox("====BLACKJACK====", info);
+    ui.drawBox("BLACKJACK", info);
 
     int option = ui.askChoice("What would you like to do?",
                                   TextRes::BLACKJACK_GAME_OPTIONS,
@@ -203,46 +221,45 @@ int BlackjackGame::renderInterface(const Player &player) {
     return option;
 }
 
-void BlackjackGame::renderRound(const Player &player, bool playerTurn, std::string winningInfo) {
+void BlackjackGame::renderRound(const Player &player, bool playerTurn, const std::string &winningInfo) const {
     RoundUI::clear();
 
     std::vector<std::string> roundInfo;
 
-    std::string turnInfo = playerTurn ? "Your Turn" : "Dealer's Turn";
-    roundInfo.emplace_back("==== " + turnInfo + " ====");
-
-    std::string DealersHandStr = "Dealer's Hand: ";
+    std::string dealersHandStr = "Dealer's Hand: ";
     int dealersSum = 0;
     for (const auto& card : dealerHand) {
-        DealersHandStr += card.rank + " ";
+        dealersHandStr += card.rank + " ";
         dealersSum += card.value;
     }
 
-    DealersHandStr += " (" + std::to_string(dealersSum) + ")";
+    dealersHandStr += " (" + std::to_string(dealersSum) + ")";
 
-    roundInfo.emplace_back(DealersHandStr);
+    roundInfo.emplace_back(dealersHandStr);
     roundInfo.emplace_back("");
     roundInfo.emplace_back("");
     roundInfo.emplace_back("");
 
-    std::string PlayerHandStrLine = "";
     size_t handIndex = 1;
     for (const auto& hand : playerHand) {
         int handSum = 0;
-        PlayerHandStrLine += "Hand " + std::to_string(handIndex) + ": ";
+        std::string handStr = "Hand " + std::to_string(handIndex) + ": ";
+
         for (const auto& card : hand) {
-            PlayerHandStrLine += card.rank + " ";
+            handStr += card.rank + " ";
             handSum += card.value;
         }
+
+        handStr += " (" + std::to_string(handSum) + ")";
+        roundInfo.emplace_back(handStr);
         handIndex++;
-        PlayerHandStrLine += " (" +  std::to_string(handSum) + ")";
-        roundInfo.emplace_back(PlayerHandStrLine);
     }
 
-    std::string PlayersHandHeader = player.getName() + "'s Hand";
-    roundInfo.emplace_back(PlayersHandHeader);
+    roundInfo.emplace_back("");
+    roundInfo.emplace_back(player.getName() + "'s Turn");
 
-    ui.drawBox("====BLACKJACK ROUND====", roundInfo);
+    std::string turnInfo = playerTurn ? "Your Turn" : "Dealer's Turn";
+    ui.drawBox("BLACKJACK ROUND - " + turnInfo, roundInfo);
 
     roundInfo.clear();
 
@@ -256,7 +273,7 @@ void BlackjackGame::renderRound(const Player &player, bool playerTurn, std::stri
     ui.waitForEnter();
 }
 
-void BlackjackGame::handleRound(Player &player) {
+double BlackjackGame::handleRound(Player &player) {
     deck = shuffleDeck();
 
     playerHand.clear();
@@ -277,37 +294,22 @@ void BlackjackGame::handleRound(Player &player) {
     std::string roundInfo = "Starting round.";
     renderRound(player, true, roundInfo);
 
-    int playerSum = 0;
-    for (const auto& card : playerHand[0]) {
-        playerSum += card.value;
-    }
+    int playerSum = hand0[0].value + hand0[1].value;
 
     if (playerSum == 21) {
-        roundInfo = "Blackjack! You win 1.5 times your bet.";
+        roundInfo = "Blackjack! You win 2.5 times your bet.";
         lastScore = static_cast<int>(player.getCurrentBet() * 2.5);
         renderRound(player, false, roundInfo);
-        return;
+        return 2.5;
     }
 
     renderRound(player, true, roundInfo);
 
     std::vector<bool> playerBusted;
     playerBusted.reserve(2);
-
     for (size_t i = 0; i < playerHand.size(); ++i) {
         bool busted = playerTurn(player, i);
         playerBusted.push_back(busted);
-    }
-
-    bool allBusted = true;
-    for (bool b : playerBusted) if (!b) { allBusted = false; break; }
-
-    if (allBusted) {
-        ui.print("All your hands busted! You lose your bet(s).");
-        roundInfo = "All your hands busted! You lose your bet(s).";
-        renderRound(player, false, roundInfo);
-        lastScore = 0;
-        return;
     }
 
     bool allDead = true;
@@ -319,11 +321,9 @@ void BlackjackGame::handleRound(Player &player) {
     }
 
     if (allDead) {
-        ui.print("All your hands are either busted or surrendered.");
         roundInfo = "All your hands are either busted or surrendered.";
         renderRound(player, false, roundInfo);
-        lastScore = 0;
-        return;
+        return 0.0;
     }
 
     dealerHand.push_back(drawCard());
@@ -336,7 +336,7 @@ void BlackjackGame::handleRound(Player &player) {
         roundInfo = "Dealer has Blackjack! You lose your bet.";
         renderRound(player, false, roundInfo);
         lastScore = 0;
-        return;
+        return 0.0;
     }
 
     while (dealerSum < 17) {
@@ -352,53 +352,54 @@ void BlackjackGame::handleRound(Player &player) {
     renderRound(player, false, roundInfo);
 
     if (dealerSum > 21) {
-        ui.print("Dealer busted! All non-busted hands win even money.");
         roundInfo = "Dealer busted! All non-busted hands win even money.";
         renderRound(player, false, roundInfo);
-        int totalWin = 0;
+
+        double totalMultiplier = 0.0;
         for (size_t i = 0; i < playerHand.size(); ++i) {
             if (!playerBusted[i] && !surrendered[i]) {
-                totalWin += handBets[i] * 2;
+                totalMultiplier += 2.0;  // Win: ×2
             }
         }
-        lastScore = totalWin;
-        return;
+
+        return totalMultiplier;
     }
 
-    int totalPayout = 0;
-    for (size_t i = 0; i < playerHand.size(); ++i) {
-        int sum = 0;
-        for (auto &c : playerHand[i]) sum += c.value;
+    double totalMultiplier = 0.0;
 
+    for (size_t i = 0; i < playerHand.size(); ++i) {
         if (playerBusted[i] || surrendered[i]) {
             continue;
         }
+
+        int sum = 0;
+        for (auto &c : playerHand[i]) sum += c.value;
+
 
         int playerRange = abs(21 - sum);
         int dealerRange = abs(21 - dealerSum);
 
         if (playerRange < dealerRange) {
-            ui.print("One of your hands wins!");
             roundInfo = "One of your hands wins!";
-            totalPayout += handBets[i] * 2;
+            totalMultiplier += 2.0;
         } else if (playerRange == dealerRange) {
-            ui.print("One of your hands pushes.");
             roundInfo = "One of your hands pushes.";
-            totalPayout += handBets[i];
+            totalMultiplier += 1.0;
         } else {
-            ui.print("One of your hands loses.");
             roundInfo = "One of your hands loses.";
         }
 
         renderRound(player, false, roundInfo);
     }
 
-    lastScore = totalPayout;
+    return totalMultiplier;
 }
 
 bool BlackjackGame::playerTurn(Player &player, size_t handIndex) {
     auto &hand = playerHand[handIndex];
     std::string statusMessage = "Playing hand " + std::to_string(handIndex + 1) + ".";
+
+    bool firstAction = (hand.size() == 2);
 
     while (true) {
         renderRound(player, true, statusMessage);
@@ -407,6 +408,7 @@ bool BlackjackGame::playerTurn(Player &player, size_t handIndex) {
         int option = ui.askChoice(TextRes::BLACKJACK_ROUND_OPTIONS_TITLE,
                                   TextRes::BLACKJACK_ROUND_OPTIONS,
                                   false);
+
         auto choice = static_cast<BlackjackRoundOptions>(option);
 
         switch (choice) {
@@ -423,6 +425,7 @@ bool BlackjackGame::playerTurn(Player &player, size_t handIndex) {
                     return true;
                 } else {
                     statusMessage = "You drew " + newCard.rank + ".";
+                    firstAction = false;
                     continue;
                 }
             }
@@ -434,8 +437,8 @@ bool BlackjackGame::playerTurn(Player &player, size_t handIndex) {
             }
 
             case BlackjackRoundOptions::DOUBLE_DOWN: {
-                if (hand.size() != 2) {
-                    statusMessage = "You can only double-down on your initial two cards.";
+                if (!firstAction) {
+                    statusMessage = "You can only double-down on your first action!";
                     continue;
                 }
 
@@ -458,20 +461,26 @@ bool BlackjackGame::playerTurn(Player &player, size_t handIndex) {
                     statusMessage = "You doubled-down, drew " + newCard.rank + " and busted!";
                     renderRound(player, false, statusMessage);
                     return true;
-                } else {
-                    statusMessage = "You doubled-down and drew " + newCard.rank + ".";
-                    renderRound(player, false, statusMessage);
-                    return false;
                 }
+
+                statusMessage = "You doubled-down and drew " + newCard.rank + ".";
+                renderRound(player, false, statusMessage);
+                return false;
             }
 
             case BlackjackRoundOptions::SPLIT: {
-                if (hand.size() != 2) {
-                    statusMessage = "You can only split your initial two cards.";
+                if (!firstAction) {
+                    statusMessage = "You can only split on your first action!";
                     continue;
                 }
+
+                if (hand.size() != 2) {
+                    statusMessage = "You can only split your initial two cards";
+                    continue;
+                }
+
                 if (hand[0].value != hand[1].value) {
-                    statusMessage = "You can only split a pair.";
+                    statusMessage = "You can only split a pair!";
                     continue;
                 }
 
@@ -491,17 +500,19 @@ bool BlackjackGame::playerTurn(Player &player, size_t handIndex) {
                 newHand.push_back(drawCard());
 
                 player.updateBalance(-betForThisHand);
+
                 handBets.push_back(betForThisHand);
                 surrendered.push_back(false);
                 playerHand.push_back(std::move(newHand));
 
                 statusMessage = "You split your hand.";
+                firstAction = false;
                 continue;
             }
 
             case BlackjackRoundOptions::SURRENDER: {
-                if (hand.size() != 2) {
-                    statusMessage = "You can only surrender on your first two cards.";
+                if (!firstAction) {
+                    statusMessage = "You can only surrender on your first action!";
                     continue;
                 }
 
@@ -526,7 +537,9 @@ bool BlackjackGame::playerTurn(Player &player, size_t handIndex) {
 }
 
 GameState BlackjackGame::playRound(Player &player) {
-    int bet = askForBet(player.getBalance());
+    lastScore = -1;
+
+    int bet = askForBet(player);
 
     if (bet <= 0) {
         ui.print("Cannot continue playing. Returning to Game Menu.");
@@ -534,8 +547,7 @@ GameState BlackjackGame::playRound(Player &player) {
         return GameState::GAME_MENU;
     }
 
-    player.setCurrentBet(bet);
-
+    int selectedBet = bet;
     GameState newState = GameState::GAME_MENU;
     exit = false;
 
@@ -544,33 +556,49 @@ GameState BlackjackGame::playRound(Player &player) {
 
         switch (static_cast<BlackjackOptions>(option)) {
             case BlackjackOptions::PLAY_ROUND: {
-                if (player.getBalance() < bet) {
-                    errorMessage = "Insufficient balance to place the bet";
-                    break;
-                }
+                try {
+                    if (!player.hasActiveBet()) {
+                        player.placeBet(selectedBet);
+                    }
 
-                player.setCurrentBet(bet);
-                player.updateBalance(-bet);
+                    double multiplier = handleRound(player);
 
-                handleRound(player);
-
-                if (lastScore > 0) {
-                    player.updateBalance(lastScore);
-                    int netProfit = lastScore - bet;
-                    player.setWinnings(player.getWinnings() + netProfit);
+                    if (multiplier > 0.0) {
+                        player.winBet(multiplier);
+                        lastScore = static_cast<int>(selectedBet * multiplier);
+                    } else {
+                        player.loseBet();
+                        lastScore = 0;
+                    }
+                } catch (const std::invalid_argument& e) {
+                    errorMessage = "Bet error: " + std::string(e.what());
+                    lastScore = -1;
+                } catch (const std::logic_error& e) {
+                    errorMessage = "Logic error: " + std::string(e.what());
+                    lastScore = -1;
                 }
 
                 break;
             }
             case BlackjackOptions::CHANGE_BET: {
-                int newBet = askForBet(player.getBalance());
+                if (player.hasActiveBet()) {
+                    try {
+                        player.cancelBet();
+                    } catch (const std::exception& e) {
+                        errorMessage = "Cancel error: " + std::string(e.what());
+                        break;
+                    }
+                }
+
+                int newBet = askForBet(player);
 
                 if (newBet <= 0) {
                     errorMessage = "Invalid bet amount. Keeping previous bet.";
                 } else {
-                    bet = newBet;
-                    player.setCurrentBet(bet);
+                    selectedBet = newBet;
+                    lastScore = -1;
                 }
+
                 break;
             }
             case BlackjackOptions::VIEW_PAYOUTS: {
@@ -582,6 +610,15 @@ GameState BlackjackGame::playRound(Player &player) {
                 break;
             }
             case BlackjackOptions::EXIT_TO_GAME_MENU: {
+                if (player.hasActiveBet()) {
+                    try {
+                        player.cancelBet();
+                    } catch (const std::exception& e) {
+                        errorMessage = "Failed to cancel bet: " + std::string(e.what());
+                        break;
+                    }
+                }
+
                 exit = true;
                 newState = GameState::GAME_MENU;
                 break;
