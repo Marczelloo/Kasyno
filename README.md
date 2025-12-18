@@ -13,8 +13,6 @@ The project was created in **CLion** using **CMake** and **C++20** standard.
 
 ## Showcase
 
-> Add screenshots or GIFs showcasing the project here
-
 ### Menus
 ![Main Menu](docs/images/main_menu.png)
 ![Player Creation](docs/images/player_creation.png)
@@ -24,16 +22,17 @@ The project was created in **CLion** using **CMake** and **C++20** standard.
 ![Game Selection](docs/images/game_selection_menu.png)
 
 ### Blackjack Gameplay
-![Blackjack](docs/images/blackjack_gameplay.png)
-![Blackjack](docs/images/blackjack_gameplay.gif)
+![Blackjack](docs/images/blackjack_gameplay_1.png)
+![Blackjack](docs/images/blackjack_gameplay_2.png)
+![Blackjack Gif](docs/images/blackjack_gameplay.gif)
 
 ### Roulette Wheel
 ![Roulette](docs/images/roulette_gameplay.png)
-![Roulette](docs/images/roulette_gameplay.gif)
+![Roulette Gif](docs/images/roulette_gameplay.gif)
 
 ### Slots Machine
-![Slots](docs/images/slots_gameplay.png)
-![SlotsGif](docs/images/slots_gameplay.gif)
+![Slots](docs/images/slots_gameplay_1.png)
+![Slots Gif](docs/images/slots_gameplay.gif)
 
 ## Features
 
@@ -195,7 +194,7 @@ Uses `std::mt19937_64` with seed from `std::random_device` for high-quality rand
 
 ## License
 
-MIT License
+- **[MIT License](LICENSE)**
 
 Copyright (c) 2025 Marczelloo
 

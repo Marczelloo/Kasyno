@@ -28,7 +28,7 @@ class SlotsGame: public Game {
 private:
     /**
      * @brief Asks for bet with quick bet buttons
-     * @param maxBalance Maximum bet amount
+     * @param player Current player
      * @return int Bet amount
      */
     int askForBet(Player& player) override;
